@@ -369,7 +369,7 @@ def section_line_charts(df: pd.DataFrame):
             range=["#ef4444", "#f59e0b", "#22c55e"],
         )
         bands = alt.Chart(interval_df).mark_rect(opacity=0.12).encode(
-            x=alt.X("start:T", axis=None),
+            x="start:T",
             x2="end:T",
             color=alt.Color("regime:N", title="Regime", scale=regime_colors),
             tooltip=[
