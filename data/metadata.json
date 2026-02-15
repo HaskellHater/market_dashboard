@@ -1,0 +1,47 @@
+{
+  "last_update": "2026-02-15T16:59:20.655862+00:00",
+  "series": {
+    "sp500_fut": {
+      "status": "success",
+      "last_available_date": "2026-02-13",
+      "row_count": 6343,
+      "warnings": [],
+      "error_message": null
+    },
+    "tnote_10y": {
+      "status": "success",
+      "last_available_date": "2026-02-13",
+      "row_count": 6308,
+      "warnings": [],
+      "error_message": null
+    },
+    "crude_oil": {
+      "status": "success",
+      "last_available_date": "2026-02-13",
+      "row_count": 6308,
+      "warnings": [],
+      "error_message": null
+    },
+    "gold": {
+      "status": "success",
+      "last_available_date": "2026-02-13",
+      "row_count": 6304,
+      "warnings": [],
+      "error_message": null
+    },
+    "wheat": {
+      "status": "success",
+      "last_available_date": "2026-02-13",
+      "row_count": 6305,
+      "warnings": [],
+      "error_message": null
+    },
+    "usd_index": {
+      "status": "success",
+      "last_available_date": "2026-02-13",
+      "row_count": 6343,
+      "warnings": [],
+      "error_message": null
+    }
+  }
+}
