@@ -12,7 +12,7 @@
       "ticker": "ES=F",
       "source": "yahoo",
       "frequency": "daily",
-      "field": "close",
+      "field": "adj_close",
       "timezone": "UTC",
       "calendar": "CME",
       "min_history_years": 20
@@ -24,7 +24,7 @@
       "ticker": "ZN=F",
       "source": "yahoo",
       "frequency": "daily",
-      "field": "close",
+      "field": "adj_close",
       "timezone": "UTC",
       "calendar": "CME",
       "min_history_years": 20,
@@ -38,7 +38,7 @@
       "ticker": "CL=F",
       "source": "yahoo",
       "frequency": "daily",
-      "field": "close",
+      "field": "adj_close",
       "timezone": "UTC",
       "calendar": "CME",
       "min_history_years": 20,
@@ -52,7 +52,7 @@
       "ticker": "GC=F",
       "source": "yahoo",
       "frequency": "daily",
-      "field": "close",
+      "field": "adj_close",
       "timezone": "UTC",
       "calendar": "CME",
       "min_history_years": 20
@@ -64,7 +64,7 @@
       "ticker": "ZW=F",
       "source": "yahoo",
       "frequency": "daily",
-      "field": "close",
+      "field": "adj_close",
       "timezone": "UTC",
       "calendar": "CME",
       "min_history_years": 20
@@ -76,7 +76,7 @@
       "ticker": "DX=F",
       "source": "yahoo",
       "frequency": "daily",
-      "field": "close",
+      "field": "adj_close",
       "timezone": "UTC",
       "calendar": "ICE",
       "min_history_years": 20

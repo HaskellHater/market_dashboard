@@ -98,16 +98,64 @@ def build_regimes(df: pd.DataFrame, benchmark_series_id: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["date", "regime"])
 
     bench["trend_63d"] = bench["return"].rolling(63).sum()
-    q1, q2 = bench["trend_63d"].quantile(0.33), bench["trend_63d"].quantile(0.66)
-    if pd.isna(q1) or pd.isna(q2):
-        bench["regime"] = "Neutral"
-    else:
-        bench["regime"] = np.select(
-            [bench["trend_63d"] <= q1, bench["trend_63d"] >= q2],
-            ["Bear", "Bull"],
-            default="Neutral",
-        )
+    # Expanding quantiles: no look-ahead bias
+    exp_q1 = bench["trend_63d"].expanding(min_periods=252).quantile(0.33)
+    exp_q2 = bench["trend_63d"].expanding(min_periods=252).quantile(0.66)
+    bench["regime"] = np.select(
+        [bench["trend_63d"] <= exp_q1, bench["trend_63d"] >= exp_q2],
+        ["Bear", "Bull"],
+        default="Neutral",
+    )
+    bench = bench[exp_q1.notna()]  # drop warmup
     return bench[["date", "regime"]]
+
+
+COMPOSITE_DRIVERS = {
+    "sp500_fut": +0.25,
+    "crude_oil": +0.25,
+    "usd_index": -0.25,
+    "gold":      -0.25,
+}
+
+
+def build_composite_regimes(df: pd.DataFrame) -> pd.DataFrame:
+    """Composite macro regime from 4 equally-weighted z-scored drivers."""
+    frames = []
+    for sid, weight in COMPOSITE_DRIVERS.items():
+        s = df.loc[df["series_id"] == sid, ["date", "return"]].dropna().copy()
+        if s.empty:
+            continue
+        s = s.sort_values("date").drop_duplicates("date")
+        s["trend"] = s["return"].rolling(63, min_periods=40).sum()
+        mu = s["trend"].rolling(252, min_periods=120).mean()
+        sigma = s["trend"].rolling(252, min_periods=120).std()
+        s["z"] = (s["trend"] - mu) / sigma.replace(0, np.nan)
+        s["wz"] = weight * s["z"]
+        frames.append(s[["date", "wz"]].set_index("date"))
+
+    if not frames:
+        return pd.DataFrame(columns=["date", "composite_score", "regime"])
+
+    combined = pd.concat(frames, axis=1)
+    combined.columns = range(len(combined.columns))
+    score = combined.mean(axis=1) * len(COMPOSITE_DRIVERS)  # rescale for present drivers
+    score = score.dropna()
+
+    if score.empty:
+        return pd.DataFrame(columns=["date", "composite_score", "regime"])
+
+    # Expanding quantiles: at each date, thresholds use only past data (no look-ahead)
+    exp_q1 = score.expanding(min_periods=252).quantile(0.33)
+    exp_q2 = score.expanding(min_periods=252).quantile(0.66)
+    regime = np.select(
+        [score <= exp_q1, score >= exp_q2],
+        ["Bear", "Bull"],
+        default="Neutral",
+    )
+
+    out = pd.DataFrame({"date": score.index, "composite_score": score.values, "regime": regime})
+    out = out[exp_q1.notna().values]  # drop warmup period where quantiles aren't available
+    return out.reset_index(drop=True)
 
 
 def build_regime_intervals(regimes: pd.DataFrame) -> pd.DataFrame:
@@ -310,13 +358,22 @@ def section_line_charts(df: pd.DataFrame):
 
     interval_df = None
     if overlay_regimes:
-        benchmark = st.selectbox(
-            "Regime benchmark",
-            options=selected_names,
-            index=0,
-            help="Regime is computed from the 63-day trend of this series.",
+        regime_mode = st.radio(
+            "Regime source",
+            options=["Composite (macro)", "Single series"],
+            horizontal=True,
+            key="line_regime_mode",
         )
-        regimes = build_regimes(df, name_to_id[benchmark])
+        if regime_mode == "Composite (macro)":
+            regimes = build_composite_regimes(df)
+        else:
+            benchmark = st.selectbox(
+                "Regime benchmark",
+                options=selected_names,
+                index=0,
+                help="Regime is computed from the 63-day trend of this series.",
+            )
+            regimes = build_regimes(df, name_to_id[benchmark])
         interval_df = build_regime_intervals(regimes)
 
     line = (
@@ -470,13 +527,6 @@ def section_heatmap(df: pd.DataFrame):
 
     c1, c2 = st.columns([1, 1.2])
     with c1:
-        benchmark = st.selectbox(
-            "Regime benchmark (heatmap)",
-            options=[x[1] for x in available],
-            index=0,
-            key="heatmap_benchmark",
-        )
-    with c2:
         metric = st.selectbox(
             "Heatmap metric",
             options=[
@@ -488,8 +538,24 @@ def section_heatmap(df: pd.DataFrame):
             ],
             index=0,
         )
+    with c2:
+        regime_mode = st.radio(
+            "Regime source",
+            options=["Composite (macro)", "Single series"],
+            horizontal=True,
+            key="heatmap_regime_mode",
+        )
 
-    regimes = build_regimes(df, name_to_id[benchmark])
+    if regime_mode == "Composite (macro)":
+        regimes = build_composite_regimes(df)
+    else:
+        benchmark = st.selectbox(
+            "Regime benchmark (heatmap)",
+            options=[x[1] for x in available],
+            index=0,
+            key="heatmap_benchmark",
+        )
+        regimes = build_regimes(df, name_to_id[benchmark])
     if regimes.empty:
         st.warning("Unable to compute regimes for the heatmap.")
         return
