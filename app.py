@@ -42,32 +42,10 @@ def setup_page():
         "from local ETL data."
     )
 
-
 @st.cache_data(show_spinner=False)
 def load_config(path: Path) -> dict:
     with open(path) as f:
         return json.load(f)
-
-
-st.write("CWD:", Path.cwd())
-st.write("CONFIG exists:", CONFIG_PATH.exists(), "->", str(CONFIG_PATH.resolve()))
-st.write("DATA_DIR exists:", DATA_DIR.exists(), "->", str(DATA_DIR.resolve()))
-st.write("processed exists:", (DATA_DIR/"processed").exists())
-
-if (DATA_DIR/"processed").exists():
-    st.write("files in data/processed:",
-             sorted([p.name for p in (DATA_DIR/"processed").glob("*")])[:200])
-
-cfg = load_config(CONFIG_PATH)
-ids = [s.get("id") for s in cfg.get("series", [])]
-st.write("series ids in config (first 50):", ids[:50])
-
-missing = []
-for sid in ids:
-    p = DATA_DIR/"processed"/f"{sid}.parquet"
-    if not p.exists():
-        missing.append(str(p))
-st.write("missing parquet paths (first 50):", missing[:50])
 
 @st.cache_data(show_spinner=False)
 def load_data(config_path: Path, data_dir: Path) -> pd.DataFrame:
