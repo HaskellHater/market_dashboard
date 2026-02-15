@@ -1,0 +1,85 @@
+{
+  "settings": {
+    "start_date": "2001-01-01",
+    "output_dir": "data",
+    "log_dir": "logs"
+  },
+  "series": [
+    {
+      "id": "sp500_fut",
+      "name": "E-mini S&P 500",
+      "asset_class": "equity_index",
+      "ticker": "ES=F",
+      "source": "yahoo",
+      "frequency": "daily",
+      "field": "close",
+      "timezone": "UTC",
+      "calendar": "CME",
+      "min_history_years": 20
+    },
+    {
+      "id": "tnote_10y",
+      "name": "10-Year T-Note",
+      "asset_class": "fixed_income",
+      "ticker": "ZN=F",
+      "source": "yahoo",
+      "frequency": "daily",
+      "field": "close",
+      "timezone": "UTC",
+      "calendar": "CME",
+      "min_history_years": 20,
+      "curve_group": "US_RATES",
+      "maturity": "10Y"
+    },
+    {
+      "id": "crude_oil",
+      "name": "Crude Oil WTI",
+      "asset_class": "commodity",
+      "ticker": "CL=F",
+      "source": "yahoo",
+      "frequency": "daily",
+      "field": "close",
+      "timezone": "UTC",
+      "calendar": "CME",
+      "min_history_years": 20,
+      "curve_group": "WTI_FUT",
+      "maturity": "M1"
+    },
+    {
+      "id": "gold",
+      "name": "Gold",
+      "asset_class": "commodity",
+      "ticker": "GC=F",
+      "source": "yahoo",
+      "frequency": "daily",
+      "field": "close",
+      "timezone": "UTC",
+      "calendar": "CME",
+      "min_history_years": 20
+    },
+    {
+      "id": "wheat",
+      "name": "Wheat",
+      "asset_class": "commodity",
+      "ticker": "ZW=F",
+      "source": "yahoo",
+      "frequency": "daily",
+      "field": "close",
+      "timezone": "UTC",
+      "calendar": "CME",
+      "min_history_years": 20
+    },
+    {
+      "id": "usd_index",
+      "name": "US Dollar Index",
+      "asset_class": "currency",
+      "ticker": "DX=F",
+      "source": "yahoo",
+      "frequency": "daily",
+      "field": "close",
+      "timezone": "UTC",
+      "calendar": "ICE",
+      "min_history_years": 20
+    }
+  ]
+}
