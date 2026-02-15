@@ -38,8 +38,8 @@ def setup_page():
     st.set_page_config(page_title="Market Data Visualization", layout="wide")
     st.title("Data Visualization")
     st.caption(
-        "Line charts, overlays de régime, term structure, heatmaps, et courbes de taux "
-        "sur données ETL locales."
+        "Line charts, regime overlays, term structure, heatmaps, and yield curves "
+        "from local ETL data."
     )
 
 
@@ -48,6 +48,26 @@ def load_config(path: Path) -> dict:
     with open(path) as f:
         return json.load(f)
 
+
+st.write("CWD:", Path.cwd())
+st.write("CONFIG exists:", CONFIG_PATH.exists(), "->", str(CONFIG_PATH.resolve()))
+st.write("DATA_DIR exists:", DATA_DIR.exists(), "->", str(DATA_DIR.resolve()))
+st.write("processed exists:", (DATA_DIR/"processed").exists())
+
+if (DATA_DIR/"processed").exists():
+    st.write("files in data/processed:",
+             sorted([p.name for p in (DATA_DIR/"processed").glob("*")])[:200])
+
+cfg = load_config(CONFIG_PATH)
+ids = [s.get("id") for s in cfg.get("series", [])]
+st.write("series ids in config (first 50):", ids[:50])
+
+missing = []
+for sid in ids:
+    p = DATA_DIR/"processed"/f"{sid}.parquet"
+    if not p.exists():
+        missing.append(str(p))
+st.write("missing parquet paths (first 50):", missing[:50])
 
 @st.cache_data(show_spinner=False)
 def load_data(config_path: Path, data_dir: Path) -> pd.DataFrame:
@@ -150,15 +170,15 @@ def select_snapshot_per_series(df: pd.DataFrame, date: pd.Timestamp) -> pd.DataF
 
 def prepare_curve_values(snapshot: pd.DataFrame, curve_mode: str) -> tuple[pd.DataFrame, str]:
     s = snapshot.copy()
-    unit = "unités natives"
+    unit = "native units"
 
-    if curve_mode == "Prix":
+    if curve_mode == "Price":
         s["value"] = s["price"]
-        unit = "prix"
+        unit = "price"
     elif curve_mode == "Yield proxy (%)":
         s["value"] = np.where(s["asset_class"] == "fixed_income", 100.0 - s["price"], np.nan)
         unit = "%"
-    elif curve_mode == "Spread vs maturité la plus courte":
+    elif curve_mode == "Spread vs shortest maturity":
         base_idx = s["maturity_months"].idxmin() if s["maturity_months"].notna().any() else s.index[0]
         base_value = s.loc[base_idx, "price"]
         s["value"] = s["price"] - base_value
@@ -235,8 +255,8 @@ def build_performance_export_png(
 
 
 def section_line_charts(df: pd.DataFrame):
-    st.subheader("1) Line Charts")
-    st.caption("Séries temporelles de performance et métriques clés avec overlay de régime optionnel.")
+    st.subheader("Line Charts")
+    st.caption("Performance time series with optional regime overlay.")
 
     available = (
         df[["series_id", "series_name"]]
@@ -251,31 +271,54 @@ def section_line_charts(df: pd.DataFrame):
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
         selected_names = st.multiselect(
-            "Séries",
+            "Series",
             options=[x[1] for x in available],
             default=default_series,
         )
     with c2:
         metric_label = st.selectbox(
-            "Métrique",
+            "Metric",
             options=[
-                "Log return cumulé (%)",
-                "Prix",
-                "Log return journalier (%)",
+                "Cumulative log return (%)",
+                "Price",
+                "Daily log return (%)",
             ],
             index=0,
         )
     with c3:
-        overlay_regimes = st.checkbox("Overlay régimes", value=True)
+        overlay_regimes = st.checkbox("Overlay regimes", value=True)
 
     if not selected_names:
-        st.warning("Sélectionnez au moins une série.")
+        st.warning("Select at least one series.")
         return
 
+    d1, d2 = st.columns(2)
+    with d1:
+        date_start = st.date_input(
+            "Start date",
+            value=df["date"].min().date(),
+            min_value=df["date"].min().date(),
+            max_value=df["date"].max().date(),
+            key="line_date_start",
+        )
+    with d2:
+        date_end = st.date_input(
+            "End date",
+            value=df["date"].max().date(),
+            min_value=df["date"].min().date(),
+            max_value=df["date"].max().date(),
+            key="line_date_end",
+        )
+
+    df = df[(df["date"] >= pd.Timestamp(date_start)) & (df["date"] <= pd.Timestamp(date_end))].copy()
+    df["cum_perf"] = (
+        df["return"].fillna(0.0).groupby(df["series_id"]).cumsum() * 100.0
+    )
+
     metric_map = {
-        "Log return cumulé (%)": ("cum_perf", "Log return cumulé (%)"),
-        "Prix": ("price", "Prix (unités natives)"),
-        "Log return journalier (%)": ("daily_return_pct", "Log return journalier (%)"),
+        "Cumulative log return (%)": ("cum_perf", "Cumulative log return (%)"),
+        "Price": ("price", "Price (native units)"),
+        "Daily log return (%)": ("daily_return_pct", "Daily log return (%)"),
     }
     metric_col, y_title = metric_map[metric_label]
 
@@ -290,10 +333,10 @@ def section_line_charts(df: pd.DataFrame):
     interval_df = None
     if overlay_regimes:
         benchmark = st.selectbox(
-            "Benchmark régime",
+            "Regime benchmark",
             options=selected_names,
             index=0,
-            help="Le régime est calculé à partir de la tendance 63 jours de cette série.",
+            help="Regime is computed from the 63-day trend of this series.",
         )
         regimes = build_regimes(df, name_to_id[benchmark])
         interval_df = build_regime_intervals(regimes)
@@ -302,12 +345,12 @@ def section_line_charts(df: pd.DataFrame):
         alt.Chart(chart_df)
         .mark_line(strokeWidth=2)
         .encode(
-            x=alt.X("date:T", title="Date"),
+            x=alt.X("date:T", title="Date", axis=alt.Axis(labelAngle=-45, format="%b %Y")),
             y=alt.Y("value:Q", title=y_title),
-            color=alt.Color("series_name:N", title="Série"),
+            color=alt.Color("series_name:N", title="Series"),
             tooltip=[
                 alt.Tooltip("date:T", title="Date"),
-                alt.Tooltip("series_name:N", title="Série"),
+                alt.Tooltip("series_name:N", title="Series"),
                 alt.Tooltip("value:Q", title=y_title, format=".4f"),
             ],
         )
@@ -315,7 +358,7 @@ def section_line_charts(df: pd.DataFrame):
             height=420,
             title={
                 "text": "Performance Time Series",
-                "subtitle": "Lignes par série avec tooltips, axes et unités",
+                "subtitle": "Lines per series with tooltips, axes and units",
             },
         )
     )
@@ -326,13 +369,13 @@ def section_line_charts(df: pd.DataFrame):
             range=["#ef4444", "#f59e0b", "#22c55e"],
         )
         bands = alt.Chart(interval_df).mark_rect(opacity=0.12).encode(
-            x="start:T",
+            x=alt.X("start:T", axis=None),
             x2="end:T",
-            color=alt.Color("regime:N", title="Régime", scale=regime_colors),
+            color=alt.Color("regime:N", title="Regime", scale=regime_colors),
             tooltip=[
-                alt.Tooltip("regime:N", title="Régime"),
-                alt.Tooltip("start:T", title="Début"),
-                alt.Tooltip("end:T", title="Fin"),
+                alt.Tooltip("regime:N", title="Regime"),
+                alt.Tooltip("start:T", title="Start"),
+                alt.Tooltip("end:T", title="End"),
             ],
         )
         chart = alt.layer(bands, line).resolve_scale(color="independent")
@@ -348,7 +391,7 @@ def section_line_charts(df: pd.DataFrame):
         intervals=interval_df,
     )
     st.download_button(
-        "Exporter image PNG (line chart)",
+        "Export PNG (line chart)",
         data=png_data,
         file_name="line_chart.png",
         mime="image/png",
@@ -356,14 +399,14 @@ def section_line_charts(df: pd.DataFrame):
 
 
 def section_term_structure(df: pd.DataFrame):
-    st.subheader("2) Term Structure")
+    st.subheader("Term Structure")
     st.caption(
-        "Courbe par maturité (x=maturité, y=prix/yield/spread) sur date sélectionnée."
+        "Curve by maturity (x=maturity, y=price/yield/spread) at selected date."
     )
 
     curves = df[df["curve_group"].notna() & df["maturity"].notna()].copy()
     if curves.empty:
-        st.info("Aucune donnée de courbe/maturité trouvée dans la configuration.")
+        st.info("No curve/maturity data found in configuration.")
         return
 
     counts = (
@@ -377,8 +420,8 @@ def section_term_structure(df: pd.DataFrame):
 
     if not eligible:
         st.info(
-            "Term structure non traçable actuellement: il faut au moins 2 maturités "
-            "dans un même `curve_group`."
+            "Term structure not plottable: need at least 2 maturities "
+            "in the same `curve_group`."
         )
         st.dataframe(counts, width="stretch")
         return
@@ -388,12 +431,12 @@ def section_term_structure(df: pd.DataFrame):
         curve_group = st.selectbox("Curve group", options=eligible)
     with c2:
         curve_mode = st.selectbox(
-            "Variable Y",
-            options=["Prix", "Yield proxy (%)", "Spread vs maturité la plus courte"],
+            "Y Variable",
+            options=["Price", "Yield proxy (%)", "Spread vs shortest maturity"],
         )
     with c3:
         date_pick = st.date_input(
-            "Date sélectionnée",
+            "Selected date",
             value=curves["date"].max().date(),
             min_value=curves["date"].min().date(),
             max_value=curves["date"].max().date(),
@@ -404,7 +447,7 @@ def section_term_structure(df: pd.DataFrame):
     snap, unit = prepare_curve_values(snap, curve_mode)
 
     if snap.empty:
-        st.warning("Pas de points de courbe disponibles pour cette date/variable.")
+        st.warning("No curve points available for this date/variable.")
         return
 
     snap["maturity_label"] = snap["maturity"].astype(str)
@@ -414,12 +457,12 @@ def section_term_structure(df: pd.DataFrame):
         alt.Chart(snap)
         .mark_line(point=True, strokeWidth=2.5)
         .encode(
-            x=alt.X("maturity_label:O", title="Maturité"),
+            x=alt.X("maturity_label:O", title="Maturity"),
             y=alt.Y("value:Q", title=f"{curve_mode} ({unit})"),
             tooltip=[
-                alt.Tooltip("series_name:N", title="Série"),
+                alt.Tooltip("series_name:N", title="Series"),
                 alt.Tooltip("snapshot_date:T", title="Date"),
-                alt.Tooltip("maturity_label:N", title="Maturité"),
+                alt.Tooltip("maturity_label:N", title="Maturity"),
                 alt.Tooltip("value:Q", title=f"{curve_mode}", format=".4f"),
             ],
         )
@@ -427,7 +470,7 @@ def section_term_structure(df: pd.DataFrame):
             height=360,
             title={
                 "text": f"Term Structure: {curve_group}",
-                "subtitle": "Snapshot à date choisie",
+                "subtitle": "Snapshot at selected date",
             },
         )
     )
@@ -435,8 +478,8 @@ def section_term_structure(df: pd.DataFrame):
 
 
 def section_heatmap(df: pd.DataFrame):
-    st.subheader("3) Heatmap: Asset Classes x Regimes")
-    st.caption("Comparaison des métriques de performance par classe d'actifs et régime.")
+    st.subheader("Heatmap: Asset Classes x Regimes")
+    st.caption("Performance metrics by asset class and regime.")
 
     available = (
         df[["series_id", "series_name"]]
@@ -450,14 +493,14 @@ def section_heatmap(df: pd.DataFrame):
     c1, c2 = st.columns([1, 1.2])
     with c1:
         benchmark = st.selectbox(
-            "Benchmark régime (heatmap)",
+            "Regime benchmark (heatmap)",
             options=[x[1] for x in available],
             index=0,
             key="heatmap_benchmark",
         )
     with c2:
         metric = st.selectbox(
-            "Métrique heatmap",
+            "Heatmap metric",
             options=[
                 "Annualized Return (%)",
                 "Annualized Volatility (%)",
@@ -470,12 +513,12 @@ def section_heatmap(df: pd.DataFrame):
 
     regimes = build_regimes(df, name_to_id[benchmark])
     if regimes.empty:
-        st.warning("Impossible de calculer les régimes pour la heatmap.")
+        st.warning("Unable to compute regimes for the heatmap.")
         return
 
     merged = df.merge(regimes, on="date", how="inner")
     if merged.empty:
-        st.warning("Aucune date commune entre les séries et les régimes.")
+        st.warning("No common dates between series and regimes.")
         return
 
     rows = []
@@ -485,7 +528,7 @@ def section_heatmap(df: pd.DataFrame):
         rows.append({"asset_class": asset_class, "regime": regime, "value": value})
     metric_df = pd.DataFrame(rows).dropna()
     if metric_df.empty:
-        st.warning("Pas assez de données pour calculer la heatmap.")
+        st.warning("Not enough data to compute the heatmap.")
         return
 
     heatmap_df = (
@@ -512,12 +555,12 @@ def section_heatmap(df: pd.DataFrame):
         alt.Chart(heatmap_df)
         .mark_rect()
         .encode(
-            x=alt.X("regime:N", title="Régime"),
+            x=alt.X("regime:N", title="Regime"),
             y=alt.Y("asset_class:N", title="Asset Class"),
             color=color,
             tooltip=[
                 alt.Tooltip("asset_class:N", title="Asset Class"),
-                alt.Tooltip("regime:N", title="Régime"),
+                alt.Tooltip("regime:N", title="Regime"),
                 alt.Tooltip("value:Q", title=metric, format=".4f"),
             ],
         )
@@ -525,21 +568,21 @@ def section_heatmap(df: pd.DataFrame):
             height=320,
             title={
                 "text": f"Heatmap: {metric}",
-                "subtitle": "Agrégation par asset class et régime",
+                "subtitle": "Aggregated by asset class and regime",
             },
         )
     )
     st.altair_chart(chart, width="stretch")
-    st.caption("Echelle de couleur cohérente sur toute la heatmap, unités selon la métrique choisie.")
+    st.caption("Consistent color scale across the heatmap; units match the selected metric.")
 
 
 def section_yield_curves(df: pd.DataFrame):
-    st.subheader("4) Yield Curves: US vs Germany")
-    st.caption("Courbes de taux sur mêmes maturités si possible, sinon mapping explicite en mois.")
+    st.subheader("Yield Curves: US vs Germany")
+    st.caption("Yield curves on matching maturities where possible, mapped to months.")
 
     fixed = df[df["asset_class"] == "fixed_income"].copy()
     if fixed.empty:
-        st.info("Aucune série fixed_income disponible.")
+        st.info("No fixed_income series available.")
         return
 
     fixed = fixed[fixed["maturity"].notna()].copy()
@@ -551,12 +594,12 @@ def section_yield_curves(df: pd.DataFrame):
 
     if fixed.empty:
         st.info(
-            "Yield curves US/Germany non disponibles actuellement (régions non détectées dans la config)."
+            "US/Germany yield curves not available (regions not detected in config)."
         )
         return
 
     date_pick = st.date_input(
-        "Date yield curves",
+        "Yield curves date",
         value=fixed["date"].max().date(),
         min_value=fixed["date"].min().date(),
         max_value=fixed["date"].max().date(),
@@ -565,7 +608,7 @@ def section_yield_curves(df: pd.DataFrame):
 
     snap = select_snapshot_per_series(fixed, pd.Timestamp(date_pick))
     if snap.empty:
-        st.warning("Pas de point de courbe disponible à cette date.")
+        st.warning("No curve points available at this date.")
         return
 
     snap["yield_proxy"] = 100.0 - snap["price"]
@@ -574,8 +617,8 @@ def section_yield_curves(df: pd.DataFrame):
     counts = snap.groupby("region")["series_id"].nunique().to_dict()
     if counts.get("US", 0) < 2 or counts.get("Germany", 0) < 2:
         st.info(
-            "Données insuffisantes pour tracer deux courbes complètes US & Germany "
-            "(min 2 maturités par région)."
+            "Not enough data to plot full US & Germany curves "
+            "(need at least 2 maturities per region)."
         )
         st.dataframe(
             snap[["region", "series_name", "maturity_label", "maturity_months", "yield_proxy", "date"]]
@@ -588,13 +631,13 @@ def section_yield_curves(df: pd.DataFrame):
         alt.Chart(snap.sort_values(["region", "maturity_months"]))
         .mark_line(point=True, strokeWidth=2.5)
         .encode(
-            x=alt.X("maturity_months:Q", title="Maturité (mois)"),
+            x=alt.X("maturity_months:Q", title="Maturity (months)"),
             y=alt.Y("yield_proxy:Q", title="Yield proxy (%)"),
-            color=alt.Color("region:N", title="Région"),
+            color=alt.Color("region:N", title="Region"),
             tooltip=[
-                alt.Tooltip("region:N", title="Région"),
-                alt.Tooltip("series_name:N", title="Série"),
-                alt.Tooltip("maturity_label:N", title="Maturité"),
+                alt.Tooltip("region:N", title="Region"),
+                alt.Tooltip("series_name:N", title="Series"),
+                alt.Tooltip("maturity_label:N", title="Maturity"),
                 alt.Tooltip("yield_proxy:Q", title="Yield proxy (%)", format=".4f"),
                 alt.Tooltip("date:T", title="Date"),
             ],
@@ -603,7 +646,7 @@ def section_yield_curves(df: pd.DataFrame):
             height=360,
             title={
                 "text": "US vs Germany Yield Curves",
-                "subtitle": "Mapping clair sur axe maturité en mois",
+                "subtitle": "Maturity axis mapped to months",
             },
         )
     )
@@ -614,12 +657,12 @@ def main():
     setup_page()
 
     if not CONFIG_PATH.exists():
-        st.error(f"Config introuvable: {CONFIG_PATH}")
+        st.error(f"Config not found: {CONFIG_PATH}")
         return
 
     df = load_data(CONFIG_PATH, DATA_DIR)
     if df.empty:
-        st.error("Aucune donnée chargée depuis data/processed.")
+        st.error("No data loaded from data/processed.")
         return
 
     tab1, tab2, tab3, tab4 = st.tabs(
